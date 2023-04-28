@@ -2,6 +2,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import gurobipy as gp
 from gurobipy import GRB
+from itertools import islice
 
 # B4 Topology
 
@@ -28,7 +29,9 @@ def parse_demands(file_path, num_nodes):
                 for j in range(num_nodes):
                     demand = float(demand_values[i * num_nodes + j])
                     if i != j:
-                        demands[(i + 1, j + 1)] = demand
+                        if (i + 1, j + 1) not in demands or demand > demands[
+                            (i + 1, j + 1)]:
+                            demands[(i + 1, j + 1)] = demand
     return demands
 
 
@@ -52,13 +55,23 @@ def draw(graph):
     plt.show()
 
 
+def k_shortest_paths(G, source, target, k, weight=None):
+    """
+    Taken from the networkx documentation.
+    https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.simple_paths.shortest_simple_paths.html#networkx.algorithms.simple_paths.shortest_simple_paths
+    """
+    return list(
+        islice(nx.shortest_simple_paths(G, source, target, weight=weight), k))
+
+
 def create_mcf_model(graph, demands):
     edge_capacity_dict = {(u, v): c for u, v, c in graph.edges(data="capacity")}
     edges, capacity = gp.multidict(edge_capacity_dict)
 
     T = {}
     for s, d in demands:
-        tunnels = nx.all_simple_paths(graph, s, d)
+        # tunnels = nx.all_simple_paths(graph, s, d)
+        tunnels = k_shortest_paths(graph, s, d, 5)
         T[s, d] = []
         for tunnel in tunnels:
             tunnel_edges = list(zip(tunnel, tunnel[1:]))
@@ -70,7 +83,8 @@ def create_mcf_model(graph, demands):
     flow = model.addVars(edges, name="FLOW")
 
     # Constraints
-    model.addConstrs((flow.sum(i, j) <= capacity[i, j] for i, j in edges), "CAPACITY")
+    model.addConstrs((flow.sum(i, j) <= capacity[i, j] for i, j in edges),
+                     "CAPACITY")
     model.addConstrs((flow.sum(T[d]) <= demands[d] for d in demands), "DEMANDS")
 
     # Objective
@@ -95,7 +109,7 @@ def main():
     demands = parse_demands(demands_file, num_nodes)
     # print(demands)
     # draw(graph)
-    create_mcf_model(graph, demands)
+    # create_mcf_model(graph, demands)
 
     mcf_model, flow_vars = create_mcf_model(graph, demands)
     if mcf_model.status == GRB.OPTIMAL:
