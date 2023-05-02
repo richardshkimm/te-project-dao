@@ -53,7 +53,6 @@ def create_mcf_model(graph, demands):
 
     paths = {(s, d): list(nx.all_simple_edge_paths(graph, s, d)) for s, d in demands}
 
-
     flow = {}
 
     model = gp.Model("mcf")
@@ -77,8 +76,6 @@ def create_mcf_model(graph, demands):
                 edges_to_flow[a, b].append((s, d, i))
                 rep_vals[s, d, i].append((a, b))
 
-    for s, d in demands:
-        print(s, d, demands[s, d])
 
     for s, d, i in enum_sd:
         for a1, b1 in rep_vals[s, d, i]:
@@ -87,15 +84,16 @@ def create_mcf_model(graph, demands):
 
     model.addConstrs(((gp.quicksum(flow[s, d, a, b, i] for s, d, i in edges_to_flow[a, b])) <= capacity[a, b] for a, b in edges), "CAPACITY")
 
-    z = model.addVar(vtype=GRB.CONTINUOUS, name="Z")
-    model.addConstr(z == gp.max_(flow[s, d, a, b, i] for s, d, a, b, i in iter_sd), name="max_contraint")
+    mlu= model.addVar(vtype=GRB.CONTINUOUS, name="MLU")
+
+    model.addConstrs(((gp.quicksum(flow[s, d, a, b, i] for s, d, i in edges_to_flow[a, b])) <= mlu for a, b in edges), "CAPACITY")
 
     for s, d in demands:
         model.addConstr(gp.quicksum(flow[s, d, rep_sd[s, d, i][0], rep_sd[s, d, i][1], i] for i in range(len(paths[s, d]))) <= demands[s, d], f"DEMAND_{s}_{d}")
 
     c = 0 #This is for part 5
-    # c = 0.001
-    model.setObjective(gp.quicksum(flow[s, d, a, b, i] for s, d, a, b, i in iter_sd) - z * c, GRB.MAXIMIZE)
+    # c = 1000
+    model.setObjective(gp.quicksum(flow[s, d, a, b, i] for s, d, a, b, i in iter_sd) - mlu * c, GRB.MAXIMIZE)
 
     model.optimize()
 
