@@ -2,7 +2,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import gurobipy as gp
 from gurobipy import GRB
-
+from collections import defaultdict
 # B4 Topology
 
 
@@ -48,35 +48,60 @@ def draw(graph):
 def create_mcf_model(graph, demands):
     edge_capacity_dict = {
         (u, v): c for u, v, c in graph.edges(data='capacity')}
+
     edges, capacity = gp.multidict(edge_capacity_dict)
 
-    T = {(s, d): list(nx.all_simple_paths(graph, s, d)) for s, d in demands}
+    paths = {(s, d): list(nx.all_simple_edge_paths(graph, s, d)) for s, d in demands}
 
-    model = gp.Model("MCF")
 
-    # Variables
-    flow = model.addVars(edges, name="FLOW")
-    # flow = {}
-    # for i, j, d in demands:
-    #     for u, v, c in graph.edges(data='capacity'):
-    #         flow[u, v, i, j] = model.addVar(
-    #             vtype=GRB.continuous, name=f'flow_{u}_{v}_{i}_{j}')
+    flow = {}
 
-    # Constraints
-    model.addConstr(
-        (flow.sum(i, j) <= capacity[i, j] for i, j in edges), "CAPACITY")
+    model = gp.Model("mcf")
 
-    model.addConstr((flow.sum(T[d]) <= demands[d]
-                    for d in demands), "DEMANDS")
+    edges_to_flow = defaultdict(list)
+    sd_to_flow = defaultdict(list)
+    rep_sd = {}
+    rep_vals = defaultdict(list)
+    enum_sd = []
+    iter_sd = []
 
-    # Objective
-    throughput = flow.sum(d for d in demands)
-    model.setObjective(throughput, GRB.MAXIMIZE)
+    for s, d in paths:
+        for i, path in enumerate(paths[s, d]):
+            enum_sd.append((s, d, i))
+            for a, b in path:
+                if (s, d, i) not in rep_sd:
+                    rep_sd[s, d, i] = a, b
+                    iter_sd.append((s, d, a, b, i))
+                flow[s, d, a, b, i] = model.addVar(vtype=GRB.CONTINUOUS, name=f'flow_{s}_{d}_{a}_{b}_{i}')
+                sd_to_flow[s, d].append((a, b, i))
+                edges_to_flow[a, b].append((s, d, i))
+                rep_vals[s, d, i].append((a, b))
 
-    # Optimize
+    for s, d in demands:
+        print(s, d, demands[s, d])
+
+    for s, d, i in enum_sd:
+        for a1, b1 in rep_vals[s, d, i]:
+            for a2, b2 in rep_vals[s, d, i]:
+                model.addConstr(flow[s, d, a1, b1, i] == flow[s, d, a2, b2, i], f'flow_{s}_{d}_{a1}_{b1}_{a2}_{b2}_{i}')
+
+    model.addConstrs(((gp.quicksum(flow[s, d, a, b, i] for s, d, i in edges_to_flow[a, b])) <= capacity[a, b] for a, b in edges), "CAPACITY")
+
+    z = model.addVar(vtype=GRB.CONTINUOUS, name="Z")
+    model.addConstr(z == gp.max_(flow[s, d, a, b, i] for s, d, a, b, i in iter_sd), name="max_contraint")
+
+    for s, d in demands:
+        model.addConstr(gp.quicksum(flow[s, d, rep_sd[s, d, i][0], rep_sd[s, d, i][1], i] for i in range(len(paths[s, d]))) <= demands[s, d], f"DEMAND_{s}_{d}")
+
+    c = 0 #This is for part 5
+    # c = 0.001
+    model.setObjective(gp.quicksum(flow[s, d, a, b, i] for s, d, a, b, i in iter_sd) - z * c, GRB.MAXIMIZE)
+
     model.optimize()
 
-    return model, flow
+    for v in model.getVars():
+        if v.X != 0:
+            print('%s %g' % (v.VarName, v.X))
 
 
 def draw_flow_allocations(graph, demands, flow_vars):
