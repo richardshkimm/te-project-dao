@@ -114,54 +114,47 @@ def create_mcf_model(graph, demands):
 
 
 def draw_flow_allocations(graph, flow):
-    # Adding flow
+    # Copy graph
+    graph_copy = nx.DiGraph(graph)
+
+    # Flow attributes
     for s, d, a, b, i in flow:
         if flow[s, d, a, b, i].x > 0:
-            if graph.has_edge(a, b):
-                if 'flow' in graph[a][b]:
-                    graph[a][b]['flow'] += flow[s, d, a, b, i].x
+            if graph_copy.has_edge(a, b):
+                if 'flow' in graph_copy[a][b]:
+                    graph_copy[a][b]['flow'] += flow[s, d, a, b, i].x
                 else:
-                    graph[a][b]['flow'] = flow[s, d, a, b, i].x
+                    graph_copy[a][b]['flow'] = flow[s, d, a, b, i].x
             else:
-                graph.add_edge(a, b, flow=flow[s, d, a, b, i].x)
+                graph_copy.add_edge(a, b, flow=flow[s, d, a, b, i].x)
 
     # Convert graph (networkx --> pygraphviz)
-    A = nx.nx_agraph.to_agraph(graph)
+    A = nx.nx_agraph.to_agraph(graph_copy)
 
-    # Appearance
+    # Graph appearance
     A.node_attr.update(color="lightblue", style="filled", fontsize=14)
     A.edge_attr.update(fontsize=10)
 
     # Flow labels
     for a, b in A.edges():
-        flow_value = graph[int(a)][int(b)]['flow']
+        flow_value = graph_copy[int(a)][int(b)]['flow']
         A.get_edge(a, b).attr['label'] = f"{flow_value:.2f}"
 
     # Render + Display
     A.draw("flow_allocations.png", prog='dot')
-    A.view("flow_allocations.png")
 
 
 def main():
     topology_file = 'topology.txt'
     demands_file = 'demand.txt'
 
-    graph1 = parse_topology(topology_file)
-    num_nodes = graph1.number_of_nodes()
+    graph = parse_topology(topology_file)
+    num_nodes = graph.number_of_nodes()
     demands = parse_demands(demands_file, num_nodes)
-    # print(demands)
-    # draw(graph)
-    graph2 = graph1.copy()
-    mcf_model, flow = create_mcf_model(graph1, demands)
-    print("Total throughput:", mcf_model.objVal, "Gbps")
-    draw_flow_allocations(graph2, flow)
 
-    # mcf_model, flow_vars = create_mcf_model(graph, demands)
-    # if mcf_model.status == GRB.OPTIMAL:
-    #     print("Total throughput:", mcf_model.objVal, "Gbps")
-    #     # draw_flow_allocations(graph, demands, flow_vars)
-    # else:
-    #     print("No optimal solution found.")
+    mcf_model, flow = create_mcf_model(graph, demands)
+    print("Total throughput:", mcf_model.objVal, "Gbps")
+    draw_flow_allocations(graph, flow)
 
 
 if __name__ == "__main__":
