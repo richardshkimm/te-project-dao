@@ -4,6 +4,7 @@ import gurobipy as gp
 from gurobipy import GRB
 from collections import defaultdict
 import pygraphviz as pgv
+import random
 
 # B4 Topology
 
@@ -32,6 +33,22 @@ def parse_demands(file_path, num_nodes):
                     demand = float(demand_values[i * num_nodes + j])
                     if i != j:
                         demands[(i+1, j+1)] = demand
+    return demands
+
+
+def generate_graph(size):
+    graph = nx.erdos_renyi_graph(size,0.5,directed=False)
+    while not nx.is_connected(graph):
+        graph = nx.erdos_renyi_graph(size,0.5,directed=False)
+    nx.set_edge_attributes(graph, values = 5000000, name = 'capacity')
+    return graph
+
+
+def generate_demands(size):
+    demands = {}
+    for i in range(1,size+1):
+        for j in range(1,size+1):
+            demands[(i,j)] = random.uniform(1000,50000)
     return demands
 
 
