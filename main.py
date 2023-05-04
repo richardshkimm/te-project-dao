@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import gurobipy as gp
 from gurobipy import GRB
 from collections import defaultdict
-import pygraphviz as pgv
+# import pygraphviz as pgv
 import random
 
 # B4 Topology
@@ -46,8 +46,8 @@ def generate_graph(size):
 
 def generate_demands(size):
     demands = {}
-    for i in range(1,size+1):
-        for j in range(1,size+1):
+    for i in range(size):
+        for j in range(size):
             demands[(i,j)] = random.uniform(1000,50000)
     return demands
 
@@ -162,16 +162,12 @@ def draw_flow_allocations(graph, flow):
 
 
 def main():
-    topology_file = 'topology.txt'
-    demands_file = 'demand.txt'
-
-    graph = parse_topology(topology_file)
-    num_nodes = graph.number_of_nodes()
-    demands = parse_demands(demands_file, num_nodes)
-
-    mcf_model, flow = create_mcf_model(graph, demands)
-    print("Total throughput:", mcf_model.objVal, "Gbps")
-    draw_flow_allocations(graph, flow)
+    for i in range(1,11):
+        size = i*10
+        graph = generate_graph(size)
+        demands = generate_demands(size)
+        model, flow = create_mcf_model(graph, demands)
+        print(model.Runtime)
 
 
 if __name__ == "__main__":
