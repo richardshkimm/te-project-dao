@@ -214,8 +214,8 @@ def draw_flow_allocations(graph, flow):
     # Render + Display
     A.draw("flow_allocations.png", prog='dot')
 
-def main(arg):
-    if arg == 'extra':
+def main(args):
+    if len(args) > 1 and args[1] == 'extra':
         times = []
         for i in range(1,11):
             size = i*10
@@ -240,5 +240,5 @@ def main(arg):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv)
 
