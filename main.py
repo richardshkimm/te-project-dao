@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import gurobipy as gp
 from gurobipy import GRB
 from collections import defaultdict
+from itertools import combinations, islice
 # import pygraphviz as pgv
 import random
 import sys
@@ -75,8 +76,12 @@ def create_mcf_model(graph, demands, mlu_weight = 0):
     edge_capacity_dict = {
         (u, v): c for u, v, c in graph.edges(data='capacity')}
     edges, capacity = gp.multidict(edge_capacity_dict)
-    paths = {(s, d): list(nx.all_simple_edge_paths(graph, s, d)) for s, d in demands}
-
+    
+    paths = defaultdict(list)
+    for s, d in demands:
+        for x in list(islice(nx.shortest_simple_paths(graph, s, d), 10)):
+            if s != d:
+                paths[s, d].append(list(combinations(x, 2)))
     flow = {}
     model = gp.Model("mcf")
 
@@ -99,9 +104,10 @@ def create_mcf_model(graph, demands, mlu_weight = 0):
     for s, d in paths:
         for idx, path in enumerate(paths[s, d]):
             # Can be made more efficient by only comparing with one right before it
-            for i1, j1 in path:
-                for i2, j2 in path:
-                   model.addConstr(flow[s, d, i1, j1, idx] == flow[s, d, i2, j2, idx], f'flow_{s}_{d}_{i1}_{j1}_{i2}_{j2}_{idx}')
+            for i in range(1, len(path)):
+                i1, j1 = path[i - 1][0], path[i - 1][1]
+                i2, j2 = path[i][0], path[i][1]
+                model.addConstr(flow[s, d, i1, j1, idx] == flow[s, d, i2, j2, idx], f'flow_{s}_{d}_{i1}_{j1}_{i2}_{j2}_{idx}')
 
     # Capacity constraints
     model.addConstrs((((gp.quicksum(
@@ -133,22 +139,22 @@ def create_mcf_model(graph, demands, mlu_weight = 0):
     total_demand_met = 0
     seen = set() # To check if path has already been accounted for
 
-    for v in model.getVars():
-        if v.X != 0:
-            if v.VarName != 'MLU':
-                o, s, d, a, b, i = (v.VarName).split('_')
-                if (s, d, i) not in seen:
-                    seen.add((s, d, i))
-                    demand_met[s, d] += v.X
-                    total_demand_met += v.X
-                if int(a) < int(b):
-                    edge_flow[a, b] += v.X
-                else:
-                    edge_flow[b, a] += v.X
-                # print('%s %g' % (v.VarName, v.X))
-            else:
-                print('%s %g' % (v.VarName, v.X))
-                print('%s %g' % (v.VarName, v.X * 1000000000))
+    # for v in model.getVars():
+    #     if v.X != 0:
+    #         if v.VarName != 'MLU':
+    #             o, s, d, a, b, i = (v.VarName).split('_')
+    #             if (s, d, i) not in seen:
+    #                 seen.add((s, d, i))
+    #                 demand_met[s, d] += v.X
+    #                 total_demand_met += v.X
+    #             if int(a) < int(b):
+    #                 edge_flow[a, b] += v.X
+    #             else:
+    #                 edge_flow[b, a] += v.X
+    #             # print('%s %g' % (v.VarName, v.X))
+    #         else:
+    #             print('%s %g' % (v.VarName, v.X))
+    #             print('%s %g' % (v.VarName, v.X * 1000000000))
             
     # # Print flow through graph 
     # for x in demand_met:
@@ -215,28 +221,28 @@ def draw_flow_allocations(graph, flow):
     A.draw("flow_allocations.png", prog='dot')
 
 def main(args):
-    if len(args) > 1 and args[1] == 'extra':
-        times = []
-        for i in range(1,11):
-            size = i*10
-            graph = generate_graph(size)
-            demands = generate_demands(size)
-            print('START MODEL')
-            model, flow = create_mcf_model(graph, demands)
-            times.append(model.Runtime)
-        print(times)
-        return times
-    else:
-        topology_file = 'topology.txt'
-        demands_file = 'demand.txt'
+    # if len(args) > 1 and args[1] == 'extra':
+    times = []
+    for i in range(1, 11):
+        size = i * 10
+        graph = generate_graph(size)
+        demands = generate_demands(size)
+        print('START MODEL')
+        model, flow = create_mcf_model(graph, demands)
+        times.append(model.Runtime)
+    print(times)
+    return times
+    # else:
+    #     topology_file = 'topology.txt'
+    #     demands_file = 'demand.txt'
 
-        graph = parse_topology(topology_file)
-        num_nodes = graph.number_of_nodes()
-        demands = parse_demands(demands_file, num_nodes)
+    #     graph = parse_topology(topology_file)
+    #     num_nodes = graph.number_of_nodes()
+    #     demands = parse_demands(demands_file, num_nodes)
 
-        mlu_weight = 0
-        mcf_model, flow = create_mcf_model(graph, demands, mlu_weight)
-        # draw_flow_allocations(graph, flow)
+    #     mlu_weight = 0
+    #     mcf_model, flow = create_mcf_model(graph, demands, mlu_weight)
+    #     # draw_flow_allocations(graph, flow)
 
 
 if __name__ == "__main__":
