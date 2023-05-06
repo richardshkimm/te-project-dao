@@ -5,6 +5,7 @@ from gurobipy import GRB
 from collections import defaultdict
 # import pygraphviz as pgv
 import random
+import sys
 # B4 Topology
 
 def parse_topology(file_path):
@@ -123,6 +124,7 @@ def create_mcf_model(graph, demands, mlu_weight = 0):
 
     model.setObjective((1 - mlu_weight) * gp.quicksum(flow[s, d, paths[s, d][idx][0][0], paths[s, d][idx][0][1], idx] for s, d, idx in iter_sd) - mlu_weight * mlu * total_demand, GRB.MAXIMIZE)
 
+    print('START OPT')
     model.optimize()
 
     # Below is code used for analysis
@@ -212,26 +214,31 @@ def draw_flow_allocations(graph, flow):
     # Render + Display
     A.draw("flow_allocations.png", prog='dot')
 
-def main():
-    topology_file = 'topology.txt'
-    demands_file = 'demand.txt'
+def main(arg):
+    if arg == 'extra':
+        times = []
+        for i in range(1,11):
+            size = i*10
+            graph = generate_graph(size)
+            demands = generate_demands(size)
+            print('START MODEL')
+            model, flow = create_mcf_model(graph, demands)
+            times.append(model.Runtime)
+        print(times)
+        return times
+    else:
+        topology_file = 'topology.txt'
+        demands_file = 'demand.txt'
 
-    graph = parse_topology(topology_file)
-    num_nodes = graph.number_of_nodes()
-    demands = parse_demands(demands_file, num_nodes)
+        graph = parse_topology(topology_file)
+        num_nodes = graph.number_of_nodes()
+        demands = parse_demands(demands_file, num_nodes)
 
-    mlu_weight = 0
-    mcf_model, flow = create_mcf_model(graph, demands, mlu_weight)
-    # draw_flow_allocations(graph, flow)
-    
-    for i in range(1,11):
-        size = i*10
-        graph = generate_graph(size)
-        demands = generate_demands(size)
-        model, flow = create_mcf_model(graph, demands)
-        print(model.Runtime)
+        mlu_weight = 0
+        mcf_model, flow = create_mcf_model(graph, demands, mlu_weight)
+        # draw_flow_allocations(graph, flow)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1])
 
