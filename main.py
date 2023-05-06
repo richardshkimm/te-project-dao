@@ -3,10 +3,8 @@ import matplotlib.pyplot as plt
 import gurobipy as gp
 from gurobipy import GRB
 from collections import defaultdict
-import pygraphviz as pgv
-
+# import pygraphviz as pgv
 # B4 Topology
-
 
 def parse_topology(file_path):
     graph = nx.DiGraph()
@@ -23,6 +21,7 @@ def parse_topology(file_path):
 
 def parse_demands(file_path, num_nodes):
     demands = {}
+    print(list(demands.keys()))
     with open(file_path, 'r') as f:
         lines = f.readlines()
         for line in lines:
@@ -31,7 +30,11 @@ def parse_demands(file_path, num_nodes):
                 for j in range(num_nodes):
                     demand = float(demand_values[i * num_nodes + j])
                     if i != j:
-                        demands[(i+1, j+1)] = demand
+                        # The below code needs to be changed to i and j instead of i+1 and j+1 for Sprint topology
+                        if (i+1, j+1) in demands:
+                            demands[(i+1, j+1)] = max(demands[(i+1, j+1)], demand)
+                        else:
+                            demands[(i+1, j+1)] = demand
     return demands
 
 
@@ -43,75 +46,124 @@ def draw(graph):
     labels = nx.get_edge_attributes(graph, 'capacity')
     for key in labels:
         labels[key] = f'{labels[key]} Gbps'
+
     nx.draw_networkx_edge_labels(graph, pos, font_size=8, edge_labels=labels)
     plt.show()
 
-
-def create_mcf_model(graph, demands):
+# mlu_weight is how important minimizing MLU is for optimization
+def create_mcf_model(graph, demands, mlu_weight = 0):
+    print(enumerate(demands.keys()))
+    total_demand = sum(demands.values())
     edge_capacity_dict = {
         (u, v): c for u, v, c in graph.edges(data='capacity')}
     edges, capacity = gp.multidict(edge_capacity_dict)
-    paths = {(s, d): list(nx.all_simple_edge_paths(graph, s, d))
-             for s, d in demands}
+    paths = {(s, d): list(nx.all_simple_edge_paths(graph, s, d)) for s, d in demands}
 
     flow = {}
     model = gp.Model("mcf")
 
+    # Maps edges to flow variables
     edges_to_flow = defaultdict(list)
-    sd_to_flow = defaultdict(list)
-    rep_sd = {}
-    rep_vals = defaultdict(list)
-    enum_sd = []
+
+    # List of (source, destination, and id) for each path between every source and destination
     iter_sd = []
 
-    # create flow variables + update dicts/lists
+    # Create flow variables for each edge within each path between source and destination
     for s, d in paths:
-        for i, path in enumerate(paths[s, d]):
-            enum_sd.append((s, d, i))
-            for a, b in path:
-                if (s, d, i) not in rep_sd:
-                    rep_sd[s, d, i] = a, b
-                    iter_sd.append((s, d, a, b, i))
-                flow[s, d, a, b, i] = model.addVar(
-                    vtype=GRB.CONTINUOUS, name=f'flow_{s}_{d}_{a}_{b}_{i}')
-                sd_to_flow[s, d].append((a, b, i))
-                edges_to_flow[a, b].append((s, d, i))
-                rep_vals[s, d, i].append((a, b))
+        for idx, path in enumerate(paths[s, d]):
+            iter_sd.append((s, d, idx))
+            for i, j in path:
+                flow[s, d, i, j, idx] = model.addVar(
+                    vtype=GRB.CONTINUOUS, name=f'flow_{s}_{d}_{i}_{j}_{idx}')
+                edges_to_flow[i, j].append((s, d, idx))
 
-    # Flow Constraints
-    for s, d, i in enum_sd:
-        for a1, b1 in rep_vals[s, d, i]:
-            for a2, b2 in rep_vals[s, d, i]:
-                model.addConstr(flow[s, d, a1, b1, i] == flow[s, d,
-                                a2, b2, i], f'flow_{s}_{d}_{a1}_{b1}_{a2}_{b2}_{i}')
+    # Conservation Constraints
+    for s, d in paths:
+        for idx, path in enumerate(paths[s, d]):
+            # Can be made more efficient by only comparing with one right before it
+            for i1, j1 in path:
+                for i2, j2 in path:
+                   model.addConstr(flow[s, d, i1, j1, idx] == flow[s, d, i2, j2, idx], f'flow_{s}_{d}_{i1}_{j1}_{i2}_{j2}_{idx}')
 
     # Capacity constraints
-    model.addConstrs(((gp.quicksum(
-        flow[s, d, a, b, i] for s, d, i in edges_to_flow[a, b])) <= capacity[a, b] for a, b in edges), "CAPACITY")
+    model.addConstrs((((gp.quicksum(
+        flow[s, d, i, j, idx] for s, d, idx in edges_to_flow[i, j])) + (gp.quicksum(
+        flow[s, d, j, i, idx] for s, d, idx in edges_to_flow[j, i]))) <= capacity[i, j] for i, j in edges), "CAPACITY")
 
     # MLU Capacity constraints
     mlu = model.addVar(vtype=GRB.CONTINUOUS, name="MLU")
-    model.addConstrs(((gp.quicksum(
-        flow[s, d, a, b, i] for s, d, i in edges_to_flow[a, b])) <= mlu for a, b in edges), "MLU CAP")
+    model.addConstrs((((gp.quicksum(
+        flow[s, d, i, j, idx] for s, d, idx in edges_to_flow[i, j])) + (gp.quicksum(
+        flow[s, d, j, i, idx] for s, d, idx in edges_to_flow[j, i])))/capacity[i, j] <= mlu for i, j in edges), "MLU CAP")
 
-    # "Demand" constraints
-    for s, d in demands:
-        model.addConstr(gp.quicksum(flow[s, d, rep_sd[s, d, i][0], rep_sd[s, d, i][1], i] for i in range(
-            len(paths[s, d]))) <= demands[s, d], f"DEMAND_{s}_{d}")
+    # Demand constraints (using first edge as representing flow of path)
+    for s, d in paths:
+        model.addConstr(gp.quicksum(flow[s, d, paths[s, d][idx][0][0], paths[s, d][idx][0][1], idx] for idx in range(len(paths[s, d]))) <= demands[s, d], f"DEMAND_{s}_{d}")
 
-    c = 0  # How important minimizing MLU is for optimization
-    model.setObjective(gp.quicksum(
-        flow[s, d, a, b, i] for s, d, a, b, i in iter_sd) - mlu * c, GRB.MAXIMIZE)
+    # Non-zero demand constraints
+    for s, d in paths:
+        model.addConstr(gp.quicksum(flow[s, d, paths[s, d][idx][0][0], paths[s, d][idx][0][1], idx] for idx in range(len(paths[s, d]))) >= 0, f"MIN_FLOW_{s}_{d}")
+
+    model.setObjective((1 - mlu_weight) * gp.quicksum(flow[s, d, paths[s, d][idx][0][0], paths[s, d][idx][0][1], idx] for s, d, idx in iter_sd) - mlu_weight * mlu * total_demand, GRB.MAXIMIZE)
 
     model.optimize()
 
-    # Testing
-    # for v in model.getVars():
-    #     if v.X != 0:
-    #         print('%s %g' % (v.VarName, v.X))
+    # Below is code used for analysis
+    demand_met = defaultdict(int) # Maps source and destination to demand met
+    edge_flow = defaultdict(int) # Maps edges to flow along those edges (bidirectional edges)
+    total_demand_met = 0
+    seen = set() # To check if path has already been accounted for
 
+    for v in model.getVars():
+        if v.X != 0:
+            if v.VarName != 'MLU':
+                o, s, d, a, b, i = (v.VarName).split('_')
+                if (s, d, i) not in seen:
+                    seen.add((s, d, i))
+                    demand_met[s, d] += v.X
+                    total_demand_met += v.X
+                if int(a) < int(b):
+                    edge_flow[a, b] += v.X
+                else:
+                    edge_flow[b, a] += v.X
+                # print('%s %g' % (v.VarName, v.X))
+            else:
+                print('%s %g' % (v.VarName, v.X))
+                print('%s %g' % (v.VarName, v.X * 1000000000))
+            
+    # # Print flow through graph 
+    # for x in demand_met:
+    #     print (x,':',demand_met[x])
+
+    # # Code to print graph starts
+    # out_graph = nx.Graph()
+    # seen_edges = set()
+    # max_capacity = 0
+    # for x in sorted(edge_flow):
+    #     out_graph.add_edge(int(x[0]), int(x[1]), capacity=int(edge_flow[x]))
+    #     seen_edges.add((int(x[0]), int(x[1])))
+    #     max_capacity = max(max_capacity, edge_flow[x])
+    
+    # for edge in edges:
+    #     if edge[0] < edge[1] and (edge[0], edge[1]) not in seen_edges:
+    #         out_graph.add_edge(int(edge[0]), int(edge[1]), capacity=0)
+
+    # out_edges = out_graph.edges()
+    # pos = nx.circular_layout(out_graph)
+    # weights = [out_graph[u][v]['capacity'] / max_capacity * 10 + 1 for u,v in out_edges]
+    # nx.draw(out_graph, pos, with_labels=True, node_size=800, node_color='lightblue',
+    #         edge_color='gray', font_size=12, font_weight='bold', width=weights)
+
+    # labels = nx.get_edge_attributes(out_graph, 'capacity')
+    # for key in labels:
+    #     labels[key] = f'{labels[key]} Gbps'
+    # nx.draw_networkx_edge_labels(out_graph, pos, font_size=8, edge_labels=labels)
+    # plt.show()
+    # # Code to print graph ends
+
+    print("Demand met:", total_demand_met, "out of", total_demand)
+    print("Percent of demand met:", total_demand_met / total_demand)
     return model, flow
-
 
 def draw_flow_allocations(graph, flow):
     # Copy graph
@@ -143,7 +195,6 @@ def draw_flow_allocations(graph, flow):
     # Render + Display
     A.draw("flow_allocations.png", prog='dot')
 
-
 def main():
     topology_file = 'topology.txt'
     demands_file = 'demand.txt'
@@ -152,10 +203,11 @@ def main():
     num_nodes = graph.number_of_nodes()
     demands = parse_demands(demands_file, num_nodes)
 
-    mcf_model, flow = create_mcf_model(graph, demands)
-    print("Total throughput:", mcf_model.objVal, "Gbps")
-    draw_flow_allocations(graph, flow)
+    mlu_weight = 0
+    mcf_model, flow = create_mcf_model(graph, demands, mlu_weight)
+    # draw_flow_allocations(graph, flow)
 
 
 if __name__ == "__main__":
     main()
+
