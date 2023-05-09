@@ -201,8 +201,12 @@ def draw_flow_allocations(graph, flow):
 def main(args):
     if len(args) > 1 and args[1] == 'extra':
         times = []
+<<<<<<< HEAD
         for i in range(1, 2):
             size = i * 10
+=======
+        for size in range(5, 201, 10):
+>>>>>>> 124dac64e4b77335dcd0803a10fd32e3afeafe29
             graph = generate_graph(size)
             demands = generate_demands(size)
             model, flow = create_mcf_model(graph, demands)
