@@ -200,21 +200,22 @@ def draw_flow_allocations(graph, flow):
 
 def main(args):
     if len(args) > 1 and args[1] == 'extra':
+        num_nodes = list(range(5, 201, 10))
         times = []
-<<<<<<< HEAD
-        for i in range(1, 2):
-            size = i * 10
-=======
-        for size in range(5, 201, 10):
->>>>>>> 124dac64e4b77335dcd0803a10fd32e3afeafe29
+        for size in num_nodes:
             graph = generate_graph(size)
             demands = generate_demands(size)
             model, flow = create_mcf_model(graph, demands)
             times.append(model.Runtime)
-            print(size)
-            print(model.Runtime)
-        print(times)
-        return times
+        plt.plot(num_nodes,times)
+        plt.suptitle('Solving Time vs. Graph Size', fontweight='bold')
+        plt.title('Max Throughput',fontsize='small')
+        plt.xticks(num_nodes)
+        plt.tick_params('x', labelsize=6)
+        plt.xlabel('# Nodes')
+        plt.ylabel('Time (s)')
+        plt.savefig('extra-credit.png')
+        plt.show()
     else:
         topology_file = 'topology.txt'
         demands_file = 'demand.txt'
