@@ -31,5 +31,6 @@ Running the code snippet below will output the results of the Gurobipy optimizat
 ```bash
   python3 main.py
 ```
+(Inputs topology (Sprint or B4), algorithm (maximize throughput or minimize mlu), and mlu_weight can all be adjusted in our main() function)
 
 To see the solving times for smaller vs larger topologies run the Jupyter Notebook: extra_credit.ipynb

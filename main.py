@@ -68,7 +68,6 @@ def draw(graph):
     nx.draw_networkx_edge_labels(graph, pos, font_size=8, edge_labels=labels)
     plt.show()
 
-# mlu_weight is how important minimizing MLU is for optimization
 def create_mcf_model(graph, demands, mlu_weight = 0, extra_credit = False):
     total_demand = sum(demands.values())
     edge_capacity_dict = {
@@ -87,7 +86,7 @@ def create_mcf_model(graph, demands, mlu_weight = 0, extra_credit = False):
     flow = {}
     model = gp.Model("mcf")
 
-    edges_to_flow = defaultdict(list) # Maps edges to flow paths
+    edges_to_flow = defaultdict(list) # Maps edges to paths
     
     for s, d in paths:
         for idx, path in enumerate(paths[s, d]):
@@ -138,7 +137,9 @@ def create_mcf_model(graph, demands, mlu_weight = 0, extra_credit = False):
                 final_mlu = v.X
 
     # # Code to print graph starts
-    print_graph = False # set to True to print graph
+    print_graph = True # set to True to print graph
+    if extra_credit:
+        print_graph = False
     if print_graph:
         out_graph = nx.Graph()
         seen_edges = set()
@@ -172,7 +173,10 @@ def create_mcf_model(graph, demands, mlu_weight = 0, extra_credit = False):
 
     return model, flow
 
-def main(topology, algorithm):
+def main():
+    topology = 'Sprint' # set to 'Sprint' or 'B4'
+    algorithm = 2 # set to 1 (Maximum throughput) or 2 (Minimizing mlu)
+    
     topology_file = topology + '/topology.txt'
     demands_file = topology + '/demand.txt'
 
@@ -192,7 +196,4 @@ def main(topology, algorithm):
     create_mcf_model(graph, demands, mlu_weight = mlu_weight)
 
 if __name__ == "__main__":
-    topology = 'B4' # set to 'Sprint' or 'B4'
-    algorithm = 2 # set to 1 (Maximum throughput) or 2 (Minimizing link Utilization)
-    main(topology, algorithm)
-
+    main()
