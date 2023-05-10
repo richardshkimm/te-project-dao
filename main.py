@@ -96,7 +96,7 @@ def create_mcf_model(graph, demands, mlu_weight = 0, extra_credit = False):
             flow[s, d, idx] = model.addVar(
                 vtype=GRB.CONTINUOUS, name=f'flow_{s}_{d}_{idx}')
     
-    # List of (source, destination, and id) for each path between every source and destination
+    # Add flow variable defined by (source, destination, and id) for each path between every source and destination
     model.addConstrs(((gp.quicksum(flow[s, d, idx] for s, d, idx in edges_to_flow[i, j])) + (gp.quicksum(
         flow[s, d, idx] for s, d, idx in edges_to_flow[j, i])) <= capacity[i, j] for i, j in edges), "CAPACITY")
 
